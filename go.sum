@@ -13,6 +13,8 @@ github.com/golang/protobuf v1.2.0/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5y
 github.com/google/uuid v1.0.0 h1:b4Gk+7WdP/d3HZH8EJsZpvV7EtDOgaZLtnaNGIu1adA=
 github.com/google/uuid v1.0.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
+github.com/kubernetes-csi/csi-driver-host-path v1.2.0 h1:iA4m+x7MBUvPGCNf2ylm22v1Pd7gZRtFuIqpTL1LWlc=
+github.com/kubernetes-csi/csi-driver-host-path v1.2.0/go.mod h1:G50XrLhmf3kwl2GPnoioiU6a4VwX4VF62fX9T7CvxUU=
 github.com/kubernetes-csi/csi-lib-utils v0.3.0 h1:iZ7zGJMqXXlixH24Hvc132rZ7lMYx7ggHsZPIqvhPIU=
 github.com/kubernetes-csi/csi-lib-utils v0.3.0/go.mod h1:GVmlUmxZ+SUjVLXicRFjqWUUvWez0g0Y78zNV9t7KfQ=
 github.com/pborman/uuid v0.0.0-20180906182336-adf5a7427709 h1:zNBQb37RGLmJybyMcs983HfUfpkw9OTFD9tbBfAViHE=

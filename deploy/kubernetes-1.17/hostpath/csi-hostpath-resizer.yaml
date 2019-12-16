@@ -1,12 +1,12 @@
 kind: Service
 apiVersion: v1
 metadata:
-  name: csi-hostpath-resizer
+  name: csi-zfsresizer
   labels:
-    app: csi-hostpath-resizer
+    app: csi-zfsresizer
 spec:
   selector:
-    app: csi-hostpath-resizer
+    app: csi-zfsresizer
   ports:
     - name: dummy
       port: 12345
@@ -15,28 +15,18 @@ spec:
 kind: StatefulSet
 apiVersion: apps/v1
 metadata:
-  name: csi-hostpath-resizer
+  name: csi-zfsresizer
 spec:
-  serviceName: "csi-hostpath-resizer"
+  serviceName: "csi-zfsresizer"
   replicas: 1
   selector:
     matchLabels:
-      app: csi-hostpath-resizer
+      app: csi-zfsresizer
   template:
     metadata:
       labels:
-        app: csi-hostpath-resizer
+        app: csi-zfsresizer
     spec:
-      affinity:
-        podAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: app
-                operator: In
-                values:
-                - csi-hostpathplugin
-            topologyKey: kubernetes.io/hostname
       serviceAccountName: csi-resizer
       containers:
         - name: csi-resizer
@@ -54,6 +44,6 @@ spec:
               name: socket-dir
       volumes:
         - hostPath:
-            path: /var/lib/kubelet/plugins/csi-hostpath
+            path: /var/lib/kubelet/plugins/csi-zfs
             type: DirectoryOrCreate
           name: socket-dir

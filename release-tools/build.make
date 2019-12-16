@@ -20,7 +20,7 @@
 
 # This is the default. It can be overridden in the main Makefile after
 # including build.make.
-REGISTRY_NAME=quay.io/k8scsi
+REGISTRY_NAME=cocainefarm
 
 # Can be set to -mod=vendor to ensure that the "vendor" directory is used.
 GOFLAGS_VENDOR=
@@ -73,7 +73,7 @@ build-%: check-go-version-go
 		CGO_ENABLED=0 GOOS=linux GOARCH=ppc64le go build $(GOFLAGS_VENDOR) -a -ldflags '-X main.version=$(REV) -extldflags "-static"' -o ./bin/$*-ppc64le ./cmd/$* ; \
 	fi
 
-container-%: build-%
+container-%:
 	docker build -t $*:latest -f $(shell if [ -e ./cmd/$*/Dockerfile ]; then echo ./cmd/$*/Dockerfile; else echo Dockerfile; fi) --label revision=$(REV) .
 
 push-%: container-%

@@ -14,10 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package hostpath
+package zfs
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -28,7 +27,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/kubernetes/pkg/util/mount"
-	"k8s.io/kubernetes/pkg/volume/util/volumepathhandler"
+	// "k8s.io/kubernetes/pkg/volume/util/volumepathhandler"
 )
 
 const TopologyKeyNode = "topology.hostpath.csi/node"
@@ -61,86 +60,23 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	targetPath := req.GetTargetPath()
-	ephemeralVolume := req.GetVolumeContext()["csi.storage.k8s.io/ephemeral"] == "true" ||
-		req.GetVolumeContext()["csi.storage.k8s.io/ephemeral"] == "" && ns.ephemeral // Kubernetes 1.15 doesn't have csi.storage.k8s.io/ephemeral.
 
 	if req.GetVolumeCapability().GetBlock() != nil &&
 		req.GetVolumeCapability().GetMount() != nil {
 		return nil, status.Error(codes.InvalidArgument, "cannot have both block and mount access type")
 	}
 
-	// if ephemeral is specified, create volume here to avoid errors
-	if ephemeralVolume {
-		volID := req.GetVolumeId()
-		volName := fmt.Sprintf("ephemeral-%s", volID)
-		vol, err := createHostpathVolume(req.GetVolumeId(), volName, maxStorageCapacity, mountAccess, ephemeralVolume)
-		if err != nil && !os.IsExist(err) {
-			glog.Error("ephemeral mode failed to create volume: ", err)
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-		glog.V(4).Infof("ephemeral mode: created volume: %s", vol.VolPath)
-	}
-
-	vol, err := getVolumeByID(req.GetVolumeId())
+	_, err := getVolumeByID(req.GetVolumeId())
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
 	if req.GetVolumeCapability().GetBlock() != nil {
-		if vol.VolAccessType != blockAccess {
-			return nil, status.Error(codes.InvalidArgument, "cannot publish a non-block volume as block volume")
-		}
-
-		volPathHandler := volumepathhandler.VolumePathHandler{}
-
-		// Get loop device from the volume path.
-		loopDevice, err := volPathHandler.GetLoopDevice(vol.VolPath)
-		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("failed to get the loop device: %v", err))
-		}
-
-		mounter := mount.New("")
-
-		// Check if the target path exists. Create if not present.
-		_, err = os.Lstat(targetPath)
-		if os.IsNotExist(err) {
-			if err = mounter.MakeFile(targetPath); err != nil {
-				return nil, status.Error(codes.Internal, fmt.Sprintf("failed to create target path: %s: %v", targetPath, err))
-			}
-		}
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to check if the target block file exists: %v", err)
-		}
-
-		// Check if the target path is already mounted. Prevent remounting.
-		notMount, err := mounter.IsNotMountPoint(targetPath)
-		if err != nil {
-			if !os.IsNotExist(err) {
-				return nil, status.Errorf(codes.Internal, "error checking path %s for mount: %s", targetPath, err)
-			}
-			notMount = true
-		}
-		if !notMount {
-			// It's already mounted.
-			glog.V(5).Infof("Skipping bind-mounting subpath %s: already mounted", targetPath)
-			return &csi.NodePublishVolumeResponse{}, nil
-		}
-
-		options := []string{"bind"}
-		if err := mount.New("").Mount(loopDevice, targetPath, "", options); err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("failed to mount block device: %s at %s: %v", loopDevice, targetPath, err))
-		}
+		return nil, status.Error(codes.InvalidArgument, "block devices not implemented")
 	} else if req.GetVolumeCapability().GetMount() != nil {
-		if vol.VolAccessType != mountAccess {
-			return nil, status.Error(codes.InvalidArgument, "cannot publish a non-mount volume as mount volume")
-		}
-
 		notMnt, err := mount.New("").IsNotMountPoint(targetPath)
 		if err != nil {
 			if os.IsNotExist(err) {
-				if err = os.MkdirAll(targetPath, 0750); err != nil {
-					return nil, status.Error(codes.Internal, err.Error())
-				}
 				notMnt = true
 			} else {
 				return nil, status.Error(codes.Internal, err.Error())
@@ -151,7 +87,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 			return &csi.NodePublishVolumeResponse{}, nil
 		}
 
-		fsType := req.GetVolumeCapability().GetMount().GetFsType()
+		fsType := "zfs" // req.GetVolumeCapability().GetMount().GetFsType()
 
 		deviceId := ""
 		if req.GetPublishContext() != nil {
@@ -173,14 +109,9 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		mounter := mount.New("")
 		path := getVolumePath(volumeId)
 
-		if err := mounter.Mount(path, targetPath, "", options); err != nil {
+		if err := mounter.Mount(path, targetPath, fsType, options); err != nil {
 			var errList strings.Builder
 			errList.WriteString(err.Error())
-			if vol.Ephemeral {
-				if rmErr := os.RemoveAll(path); rmErr != nil && !os.IsNotExist(rmErr) {
-					errList.WriteString(fmt.Sprintf(" :%s", rmErr.Error()))
-				}
-			}
 		}
 	}
 
@@ -196,46 +127,26 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	if len(req.GetTargetPath()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Target path missing in request")
 	}
-	targetPath := req.GetTargetPath()
+	// targetPath := req.GetTargetPath()
 	volumeID := req.GetVolumeId()
 
-	vol, err := getVolumeByID(volumeID)
+	targetPath := req.GetTargetPath()
+	_, err := getVolumeByID(volumeID)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
-	switch vol.VolAccessType {
-	case blockAccess:
-		// Unmount and delete the block file.
-		err = mount.New("").Unmount(targetPath)
-		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-		if err = os.RemoveAll(targetPath); err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-		glog.V(4).Infof("hostpath: volume %s has been unpublished.", targetPath)
-	case mountAccess:
-		// Unmounting the image
-		err = mount.New("").Unmount(req.GetTargetPath())
-		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-		glog.V(4).Infof("hostpath: volume %s/%s has been unmounted.", targetPath, volumeID)
+	// Unmounting the image
+	err = mount.New("").Unmount(req.GetTargetPath())
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
 	}
-
-	if vol.Ephemeral {
-		glog.V(4).Infof("deleting volume %s", volumeID)
-		if err := deleteHostpathVolume(volumeID); err != nil && !os.IsNotExist(err) {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("failed to delete volume: %s", err))
-		}
-	}
+	glog.V(4).Infof("hostpath: volume %s/%s has been unmounted.", targetPath, volumeID)
 
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
 func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
-
 	// Check arguments
 	if len(req.GetVolumeId()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
@@ -310,7 +221,7 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
 	}
 
-	vol, err := getVolumeByID(volID)
+	_, err := getVolumeByID(volID)
 	if err != nil {
 		// Assume not found error
 		return nil, status.Errorf(codes.NotFound, "Could not get volume %s: %v", volID, err)
@@ -321,22 +232,9 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 		return nil, status.Error(codes.InvalidArgument, "Volume path not provided")
 	}
 
-	info, err := os.Stat(volPath)
+	_, err = os.Stat(volPath)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Could not get file information from %s: %v", volPath, err)
-	}
-
-	switch m := info.Mode(); {
-	case m.IsDir():
-		if vol.VolAccessType != mountAccess {
-			return nil, status.Errorf(codes.InvalidArgument, "Volume %s is not a directory", volID)
-		}
-	case m&os.ModeDevice != 0:
-		if vol.VolAccessType != blockAccess {
-			return nil, status.Errorf(codes.InvalidArgument, "Volume %s is not a block device", volID)
-		}
-	default:
-		return nil, status.Errorf(codes.InvalidArgument, "Volume %s is invalid", volID)
 	}
 
 	return &csi.NodeExpandVolumeResponse{}, nil

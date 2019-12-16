@@ -14,18 +14,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package hostpath
+package zfs
 
 import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 
 	"github.com/golang/glog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/kubernetes/pkg/volume/util/volumepathhandler"
+	// "k8s.io/kubernetes/pkg/volume/util/volumepathhandler"
 	utilexec "k8s.io/utils/exec"
 
 	timestamp "github.com/golang/protobuf/ptypes/timestamp"
@@ -54,12 +56,14 @@ type hostPath struct {
 }
 
 type hostPathVolume struct {
-	VolName       string     `json:"volName"`
-	VolID         string     `json:"volID"`
-	VolSize       int64      `json:"volSize"`
-	VolPath       string     `json:"volPath"`
-	VolAccessType accessType `json:"volAccessType"`
-	Ephemeral     bool       `json:"ephemeral"`
+	VolName        string `json:"volName"`
+	VolID          string `json:"volID"`
+	VolSize        int64  `json:"volSize"`
+	VolPath        string `json:"volPath"`
+	ZFSPool        string `json:"zfsPool"`
+	ZFSCompression string `json:"zfsCompression"`
+	ZFSDedup       string `json:"zfsDedup"`
+	Ephemeral      bool   `json:"ephemeral"`
 }
 
 type hostPathSnapshot struct {
@@ -77,6 +81,27 @@ var (
 
 	hostPathVolumes         map[string]hostPathVolume
 	hostPathVolumeSnapshots map[string]hostPathSnapshot
+)
+
+// zfs related constants
+const (
+	ZFS_DEVPATH = "/dev/zvol/"
+	FSTYPE_ZFS  = "zfs"
+)
+
+// zfs command related constants
+const (
+	ZFSVolCmd     = "zfs"
+	ZFSCreateArg  = "create"
+	ZFSDestroyArg = "destroy"
+	ZFSSetArg     = "set"
+	ZFSListArg    = "list"
+)
+
+// constants to define volume type
+const (
+	VOLTYPE_DATASET = "DATASET"
+	VOLTYPE_ZVOL    = "ZVOL"
 )
 
 const (
@@ -105,10 +130,6 @@ func NewHostPathDriver(driverName, nodeID, endpoint string, ephemeral bool, maxV
 	}
 	if version != "" {
 		vendorVersion = version
-	}
-
-	if err := os.MkdirAll(dataRoot, 0750); err != nil {
-		return nil, fmt.Errorf("failed to create dataRoot: %v", err)
 	}
 
 	glog.Infof("Driver: %v ", driverName)
@@ -162,51 +183,59 @@ func getSnapshotByName(name string) (hostPathSnapshot, error) {
 
 // getVolumePath returs the canonical path for hostpath volume
 func getVolumePath(volID string) string {
-	return filepath.Join(dataRoot, volID)
+	vol, err := getVolumeByID(volID)
+	if err != nil {
+		panic(err)
+	}
+	return vol.VolPath
+}
+
+// builldDatasetCreateArgs returns zfs create command for dataset along with attributes as a string array
+func buildDatasetCreateArgs(vol *hostPathVolume) []string {
+	var ZFSVolArg []string
+
+	volume := vol.ZFSPool + "/" + vol.VolName
+
+	ZFSVolArg = append(ZFSVolArg, ZFSCreateArg)
+
+	quotaProperty := "quota=" + strconv.FormatInt(vol.VolSize, 10)
+	ZFSVolArg = append(ZFSVolArg, "-o", quotaProperty)
+
+	if len(vol.ZFSDedup) != 0 {
+		dedupProperty := "dedup=" + vol.ZFSDedup
+		ZFSVolArg = append(ZFSVolArg, "-o", dedupProperty)
+	}
+	if len(vol.ZFSCompression) != 0 {
+		compressionProperty := "compression=" + vol.ZFSCompression
+		ZFSVolArg = append(ZFSVolArg, "-o", compressionProperty)
+	}
+
+	ZFSVolArg = append(ZFSVolArg, volume)
+
+	return ZFSVolArg
 }
 
 // createVolume create the directory for the hostpath volume.
 // It returns the volume path or err if one occurs.
-func createHostpathVolume(volID, name string, cap int64, volAccessType accessType, ephemeral bool) (*hostPathVolume, error) {
-	path := getVolumePath(volID)
-
-	switch volAccessType {
-	case mountAccess:
-		err := os.MkdirAll(path, 0777)
-		if err != nil {
-			return nil, err
-		}
-	case blockAccess:
-		executor := utilexec.New()
-		size := fmt.Sprintf("%dM", cap/mib)
-		// Create a block file.
-		out, err := executor.Command("fallocate", "-l", size, path).CombinedOutput()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create block device: %v, %v", err, string(out))
-		}
-
-		// Associate block file with the loop device.
-		volPathHandler := volumepathhandler.VolumePathHandler{}
-		_, err = volPathHandler.AttachFileDevice(path)
-		if err != nil {
-			// Remove the block file because it'll no longer be used again.
-			if err2 := os.Remove(path); err2 != nil {
-				glog.Errorf("failed to cleanup block file %s: %v", path, err2)
-			}
-			return nil, fmt.Errorf("failed to attach device %v: %v", path, err)
-		}
-	default:
-		return nil, fmt.Errorf("unsupported access type %v", volAccessType)
-	}
-
+func createHostpathVolume(volID, name string, cap int64, compression string, dedup string, pool string, ephemeral bool) (*hostPathVolume, error) {
 	hostpathVol := hostPathVolume{
-		VolID:         volID,
-		VolName:       name,
-		VolSize:       cap,
-		VolPath:       path,
-		VolAccessType: volAccessType,
-		Ephemeral:     ephemeral,
+		VolID:          volID,
+		VolName:        name,
+		VolSize:        cap,
+		VolPath:        filepath.Join("/", filepath.Join(pool, name)),
+		ZFSPool:        pool,
+		ZFSCompression: compression,
+		ZFSDedup:       dedup,
+		Ephemeral:      ephemeral,
 	}
+
+	cmd := exec.Command(ZFSVolCmd, buildDatasetCreateArgs(&hostpathVol)...)
+	out, err := cmd.CombinedOutput()
+
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to allocate volume %v: %v: %s", hostpathVol.VolID, err, out)
+	}
+
 	hostPathVolumes[volID] = hostpathVol
 	return &hostpathVol, nil
 }
@@ -223,6 +252,17 @@ func updateHostpathVolume(volID string, volume hostPathVolume) error {
 	return nil
 }
 
+// builldVolumeDestroyArgs returns volume destroy command along with attributes as a string array
+func buildVolumeDestroyArgs(vol *hostPathVolume) []string {
+	var ZFSVolArg []string
+
+	volume := vol.ZFSPool + "/" + vol.VolName
+
+	ZFSVolArg = append(ZFSVolArg, ZFSDestroyArg, "-R", volume)
+
+	return ZFSVolArg
+}
+
 // deleteVolume deletes the directory for the hostpath volume.
 func deleteHostpathVolume(volID string) error {
 	glog.V(4).Infof("deleting hostpath volume: %s", volID)
@@ -233,27 +273,13 @@ func deleteHostpathVolume(volID string) error {
 		return nil
 	}
 
-	if vol.VolAccessType == blockAccess {
-		volPathHandler := volumepathhandler.VolumePathHandler{}
-		// Get the associated loop device.
-		device, err := volPathHandler.GetLoopDevice(getVolumePath(volID))
-		if err != nil {
-			return fmt.Errorf("failed to get the loop device: %v", err)
-		}
+	cmd := exec.Command(ZFSVolCmd, buildVolumeDestroyArgs(&vol)...)
+	out, err := cmd.CombinedOutput()
 
-		if device != "" {
-			// Remove any associated loop device.
-			glog.V(4).Infof("deleting loop device %s", device)
-			if err := volPathHandler.RemoveLoopDevice(device); err != nil {
-				return fmt.Errorf("failed to remove loop device %v: %v", device, err)
-			}
-		}
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to delete volume %v: %v: %s", vol.VolID, err, out)
 	}
 
-	path := getVolumePath(volID)
-	if err := os.RemoveAll(path); err != nil && !os.IsNotExist(err) {
-		return err
-	}
 	delete(hostPathVolumes, volID)
 	return nil
 }
@@ -274,6 +300,7 @@ func hostPathIsEmpty(p string) (bool, error) {
 	return false, err
 }
 
+// TODO rewrite for zfs snapshots
 // loadFromSnapshot populates the given destPath with data from the snapshotID
 func loadFromSnapshot(snapshotId, destPath string) error {
 	snapshot, ok := hostPathVolumeSnapshots[snapshotId]

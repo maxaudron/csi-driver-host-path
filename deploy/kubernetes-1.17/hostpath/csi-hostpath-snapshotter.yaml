@@ -1,12 +1,12 @@
 kind: Service
 apiVersion: v1
 metadata:
-  name: csi-hostpath-snapshotter
+  name: csi-zfssnapshotter
   labels:
-    app: csi-hostpath-snapshotter
+    app: csi-zfssnapshotter
 spec:
   selector:
-    app: csi-hostpath-snapshotter
+    app: csi-zfssnapshotter
   ports:
     - name: dummy
       port: 12345
@@ -15,28 +15,18 @@ spec:
 kind: StatefulSet
 apiVersion: apps/v1
 metadata:
-  name: csi-hostpath-snapshotter
+  name: csi-zfssnapshotter
 spec:
-  serviceName: "csi-hostpath-snapshotter"
+  serviceName: "csi-zfssnapshotter"
   replicas: 1
   selector:
     matchLabels:
-      app: csi-hostpath-snapshotter
+      app: csi-zfssnapshotter
   template:
     metadata:
       labels:
-        app: csi-hostpath-snapshotter
+        app: csi-zfssnapshotter
     spec:
-      affinity:
-        podAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: app
-                operator: In
-                values:
-                - csi-hostpathplugin
-            topologyKey: kubernetes.io/hostname
       serviceAccount: csi-snapshotter
       containers:
         - name: csi-snapshotter
@@ -56,6 +46,6 @@ spec:
               name: socket-dir
       volumes:
         - hostPath:
-            path: /var/lib/kubelet/plugins/csi-hostpath
+            path: /var/lib/kubelet/plugins/csi-zfs
             type: DirectoryOrCreate
           name: socket-dir

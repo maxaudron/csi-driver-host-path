@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package hostpath
+package zfs
 
 import (
 	"fmt"
@@ -85,12 +85,16 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.InvalidArgument, "Volume Capabilities missing in request")
 	}
 
+	compression := req.GetParameters()["compression"]
+	dedup := req.GetParameters()["dedup"]
+	pool := req.GetParameters()["pool"]
+
 	// Keep a record of the requested access types.
 	var accessTypeMount, accessTypeBlock bool
 
 	for _, cap := range caps {
 		if cap.GetBlock() != nil {
-			accessTypeBlock = true
+			return nil, status.Error(codes.InvalidArgument, "does not support block access type")
 		}
 		if cap.GetMount() != nil {
 			accessTypeMount = true
@@ -104,15 +108,6 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	if accessTypeBlock && accessTypeMount {
 		return nil, status.Error(codes.InvalidArgument, "cannot have both block and mount access type")
-	}
-
-	var requestedAccessType accessType
-
-	if accessTypeBlock {
-		requestedAccessType = blockAccess
-	} else {
-		// Default to mount.
-		requestedAccessType = mountAccess
 	}
 
 	// Check for maximum available capacity
@@ -142,9 +137,8 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	volumeID := uuid.NewUUID().String()
-	path := getVolumePath(volumeID)
 
-	vol, err := createHostpathVolume(volumeID, req.GetName(), capacity, requestedAccessType, false /* ephemeral */)
+	vol, err := createHostpathVolume(volumeID, req.GetName(), capacity, compression, dedup, pool, false /* ephemeral */)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create volume %v: %v", volumeID, err)
 	}
@@ -153,10 +147,10 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if req.GetVolumeContentSource() != nil {
 		contentSource := req.GetVolumeContentSource()
 		if snapshot := contentSource.GetSnapshot(); snapshot != nil {
-			err = loadFromSnapshot(snapshot.GetSnapshotId(), path)
+			err = loadFromSnapshot(snapshot.GetSnapshotId(), vol.VolPath)
 		}
 		if srcVolume := contentSource.GetVolume(); srcVolume != nil {
-			err = loadFromVolume(srcVolume.GetVolumeId(), path)
+			err = loadFromVolume(srcVolume.GetVolumeId(), vol.VolPath)
 		}
 		if err != nil {
 			if delErr := deleteHostpathVolume(volumeID); delErr != nil {
@@ -309,13 +303,8 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	volPath := hostPathVolume.VolPath
 	file := getSnapshotPath(snapshotID)
 	args := []string{}
-	if hostPathVolume.VolAccessType == blockAccess {
-		glog.V(4).Infof("Creating snapshot of Raw Block Mode Volume")
-		args = []string{"czf", file, volPath}
-	} else {
-		glog.V(4).Infof("Creating snapshot of Filsystem Mode Volume")
-		args = []string{"czf", file, "-C", volPath, "."}
-	}
+	glog.V(4).Infof("Creating snapshot of Filsystem Mode Volume")
+	args = []string{"czf", file, "-C", volPath, "."}
 	executor := utilexec.New()
 	out, err := executor.Command("tar", args...).CombinedOutput()
 	if err != nil {
