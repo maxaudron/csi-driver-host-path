@@ -3,7 +3,7 @@ kind: VolumeSnapshot
 metadata:
   name: raw-pv-snapshot
 spec:
-  snapshotClassName: csi-hostpath-snapclass
+  snapshotClassName: csi-zfs-snapclass
   source:
     name: pvc-raw
     kind: PersistentVolumeClaim

@@ -3,7 +3,7 @@ kind: VolumeSnapshot
 metadata:
   name: new-snapshot-demo
 spec:
-  snapshotClassName: csi-hostpath-snapclass
+  snapshotClassName: csi-zfs-snapclass
   source:
     name: csi-pvc
     kind: PersistentVolumeClaim

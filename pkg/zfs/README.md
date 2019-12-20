@@ -2,14 +2,14 @@
 
 ## Usage:
 
-### Build hostpathplugin
+### Build zfsplugin
 ```
-$ make hostpath
+$ make zfs
 ```
 
 ### Start Hostpath driver
 ```
-$ sudo ./_output/hostpathplugin --endpoint tcp://127.0.0.1:10000 --nodeid CSINode -v=5
+$ sudo ./_output/zfsplugin --endpoint tcp://127.0.0.1:10000 --nodeid CSINode -v=5
 ```
 
 ### Test using csc
@@ -18,7 +18,7 @@ Get ```csc``` tool from https://github.com/rexray/gocsi/tree/master/csc
 #### Get plugin info
 ```
 $ csc identity plugin-info --endpoint tcp://127.0.0.1:10000
-"csi-hostpath"  "0.1.0"
+"csi-zfs"  "0.1.0"
 ```
 
 #### Create a volume
@@ -41,13 +41,13 @@ CSIVolumeID  true
 
 #### NodePublish a volume
 ```
-$ csc node publish --endpoint tcp://127.0.0.1:10000 --cap 1,block --target-path /mnt/hostpath CSIVolumeID
+$ csc node publish --endpoint tcp://127.0.0.1:10000 --cap 1,block --target-path /mnt/zfs CSIVolumeID
 CSIVolumeID
 ```
 
 #### NodeUnpublish a volume
 ```
-$ csc node unpublish --endpoint tcp://127.0.0.1:10000 --target-path /mnt/hostpath CSIVolumeID
+$ csc node unpublish --endpoint tcp://127.0.0.1:10000 --target-path /mnt/zfs CSIVolumeID
 CSIVolumeID
 ```
 

@@ -16,3 +16,7 @@ CMDS=zfsplugin
 all: build
 
 include release-tools/build.make
+
+.PHONY: code-generator
+code-generator:
+	podman run -it -v ${PWD}:/go/src/github.com/maxaudron/zfs-csi-driver cocainefarm/zfs-csi-driver:generator /bin/bash -c "cp -r /go/src/github.com/maxaudron/zfs-csi-driver/vendor/* /go/src/; ./generate-groups.sh all github.com/maxaudron/zfs-csi-driver/pkg/client github.com/maxaudron/zfs-csi-driver/pkg/apis zfsvolume:v1"

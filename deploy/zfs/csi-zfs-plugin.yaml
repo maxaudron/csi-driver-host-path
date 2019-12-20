@@ -1,0 +1,181 @@
+# Service defined here, plus serviceName below in StatefulSet,
+# are needed only because of condition explained in
+# https://github.com/kubernetes/kubernetes/issues/69608
+
+kind: Service
+apiVersion: v1
+metadata:
+  name: csi-zfsplugin
+  labels:
+    app: csi-zfsplugin
+spec:
+  selector:
+    app: csi-zfsplugin
+  ports:
+    - name: dummy
+      port: 12345
+---
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: csi-zfsplugin
+spec:
+  serviceName: "csi-zfsplugin"
+  # One replica only:
+  # Host path driver only works when everything runs
+  # on a single node. We achieve that by starting it once and then
+  # co-locate all other pods via inter-pod affinity
+  replicas: 1
+  selector:
+    matchLabels:
+      app: csi-zfsplugin
+  template:
+    metadata:
+      labels:
+        app: csi-zfsplugin
+    spec:
+      containers:
+        - name: node-driver-registrar
+          image: quay.io/k8scsi/csi-node-driver-registrar:v1.2.0
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -rf /registration/csi-zfs /registration/csi-zfs-reg.sock"]
+          args:
+            - --v=5
+            - --csi-address=/csi/csi.sock
+            - --kubelet-registration-path=/var/lib/kubelet/plugins/csi-zfs/csi.sock
+          securityContext:
+            # This is necessary only for systems with SELinux, where
+            # non-privileged sidecar containers cannot access unix domain socket
+            # created by privileged CSI driver container.
+            privileged: true
+          env:
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+          volumeMounts:
+          - mountPath: /csi
+            name: socket-dir
+          - mountPath: /registration
+            name: registration-dir
+          - mountPath: /hdd
+            name: csi-hdd-dir
+
+        - name: zfs
+          image: cocainefarm/zfs-csi-driver:latest
+          args:
+            - "--drivername=zfs.csi.cocaine.farm"
+            - "--v=5"
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--nodeid=$(KUBE_NODE_NAME)"
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["CAP_MKNOD", "CAP_SYS_ADMIN", "SYS_ADMIN"]
+            allowPrivilegeEscalation: true
+          volumeMounts:
+            - name: dev-dir
+              mountPath: /dev
+            - name: zfs-bin
+              mountPath: /sbin/zfs
+            - name: libzpool
+              mountPath: /lib/libzpool.so.2
+            - name: libzfscore
+              mountPath: /lib/libzfs_core.so.1
+            - name: libzfs
+              mountPath: /lib/libzfs.so.2
+            - name: libuutil
+              mountPath: /lib/libuutil.so.1
+            - name: libnvpair
+              mountPath: /lib/libnvpair.so.1
+            - mountPath: /csi
+              name: socket-dir
+            - mountPath: /var/lib/kubelet/pods
+              mountPropagation: Bidirectional
+              name: mountpoint-dir
+            - mountPath: /var/lib/kubelet/plugins
+              mountPropagation: Bidirectional
+              name: plugins-dir
+            - mountPath: /hdd
+              name: csi-hdd-dir
+              mountPropagation: Bidirectional
+              # - mountPath: /ssd
+              #   name: csi-ssd-dir
+        - name: liveness-probe
+          volumeMounts:
+          - mountPath: /csi
+            name: socket-dir
+          image: quay.io/k8scsi/livenessprobe:v1.1.0
+          args:
+          - --csi-address=/csi/csi.sock
+          - --connection-timeout=3s
+          - --health-port=9898
+
+      volumes:
+        - hostPath:
+            path: /var/lib/kubelet/plugins/csi-zfs
+            type: DirectoryOrCreate
+          name: socket-dir
+        - hostPath:
+            path: /var/lib/kubelet/pods
+            type: DirectoryOrCreate
+          name: mountpoint-dir
+        - hostPath:
+            path: /var/lib/kubelet/plugins_registry
+            type: Directory
+          name: registration-dir
+        - hostPath:
+            path: /var/lib/kubelet/plugins
+            type: Directory
+          name: plugins-dir
+        - hostPath:
+            # 'path' is where PV data is persisted on host.
+            # using /tmp is also possible while the PVs will not available after plugin container recreation or host reboot
+            path: /hdd
+            type: Directory
+          name: csi-hdd-dir
+          # - hostPath:
+          #     # 'path' is where PV data is persisted on host.
+          #     # using /tmp is also possible while the PVs will not available after plugin container recreation or host reboot
+          #     path: /ssd
+          #     type: Directory
+          #   name: csi-ssd-dir
+        - hostPath:
+            path: /dev
+            type: Directory
+          name: dev-dir
+        - name: zfs-bin
+          hostPath:
+            path: /usr/sbin/zfs
+            type: File
+        - name: libzpool
+          hostPath:
+            path: /lib/libzpool.so.2.0.0
+            type: File
+        - name: libzfscore
+          hostPath:
+            path: /lib/libzfs_core.so.1.0.0
+            type: File
+        - name: libzfs
+          hostPath:
+            path: /lib/libzfs.so.2.0.0
+            type: File
+        - name: libuutil
+          hostPath:
+            path: /lib/libuutil.so.1.0.1
+            type: File
+        - name: libnvpair
+          hostPath:
+            path: /lib/libnvpair.so.1.0.1
+            type: File

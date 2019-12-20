@@ -5,7 +5,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: csi-hostpath-sc
+  storageClassName: csi-zfs-sc
   volumeMode: Block
   resources:
     requests:

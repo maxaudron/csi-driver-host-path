@@ -112,9 +112,6 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	// Check for maximum available capacity
 	capacity := int64(req.GetCapacityRange().GetRequiredBytes())
-	if capacity >= maxStorageCapacity {
-		return nil, status.Errorf(codes.OutOfRange, "Requested capacity %d exceeds maximum allowed %d", capacity, maxStorageCapacity)
-	}
 
 	// Need to check for already existing volume name, and if found
 	// check for the requested capacity and already allocated capacity
@@ -122,13 +119,13 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		// Since err is nil, it means the volume with the same name already exists
 		// need to check if the size of exisiting volume is the same as in new
 		// request
-		if exVol.VolSize >= int64(req.GetCapacityRange().GetRequiredBytes()) {
+		if exVol.Spec.Size >= int64(req.GetCapacityRange().GetRequiredBytes()) {
 			// exisiting volume is compatible with new request and should be reused.
 			// TODO (sbezverk) Do I need to make sure that RBD volume still exists?
 			return &csi.CreateVolumeResponse{
 				Volume: &csi.Volume{
-					VolumeId:      exVol.VolID,
-					CapacityBytes: int64(exVol.VolSize),
+					VolumeId:      exVol.Spec.ID,
+					CapacityBytes: int64(exVol.Spec.Size),
 					VolumeContext: req.GetParameters(),
 				},
 			}, nil
@@ -142,23 +139,23 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create volume %v: %v", volumeID, err)
 	}
-	glog.V(4).Infof("created volume %s at path %s", vol.VolID, vol.VolPath)
+	glog.V(4).Infof("created volume %s at path %s", vol.Spec.ID, vol.Spec.Path)
 
 	if req.GetVolumeContentSource() != nil {
 		contentSource := req.GetVolumeContentSource()
 		if snapshot := contentSource.GetSnapshot(); snapshot != nil {
-			err = loadFromSnapshot(snapshot.GetSnapshotId(), vol.VolPath)
+			err = loadFromSnapshot(snapshot.GetSnapshotId(), vol.Spec.Path)
 		}
 		if srcVolume := contentSource.GetVolume(); srcVolume != nil {
-			err = loadFromVolume(srcVolume.GetVolumeId(), vol.VolPath)
+			err = loadFromVolume(srcVolume.GetVolumeId(), vol.Spec.Path)
 		}
 		if err != nil {
 			if delErr := deleteHostpathVolume(volumeID); delErr != nil {
-				glog.V(2).Infof("deleting hostpath volume %v failed: %v", volumeID, delErr)
+				glog.V(2).Infof("deleting zfs volume %v failed: %v", volumeID, delErr)
 			}
 			return nil, err
 		}
-		glog.V(4).Infof("successfully populated volume %s", vol.VolID)
+		glog.V(4).Infof("successfully populated volume %s", vol.Spec.ID)
 	}
 
 	topologies := []*csi.Topology{&csi.Topology{
@@ -256,7 +253,7 @@ func getSnapshotPath(snapshotId string) string {
 	return filepath.Join(dataRoot, fmt.Sprintf("%s.tgz", snapshotId))
 }
 
-// CreateSnapshot uses tar command to create snapshot for hostpath volume. The tar command can quickly create
+// CreateSnapshot uses tar command to create snapshot for zfs volume. The tar command can quickly create
 // archives of entire directories. The host image must have "tar" binaries in /bin, /usr/sbin, or /usr/bin.
 func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
 	if err := cs.validateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT); err != nil {
@@ -293,14 +290,14 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	}
 
 	volumeID := req.GetSourceVolumeId()
-	hostPathVolume, ok := hostPathVolumes[volumeID]
-	if !ok {
+	hostPathVolume, err := getVolumeByID(volumeID)
+	if err != nil {
 		return nil, status.Error(codes.Internal, "volumeID is not exist")
 	}
 
 	snapshotID := uuid.NewUUID().String()
 	creationTime := ptypes.TimestampNow()
-	volPath := hostPathVolume.VolPath
+	volPath := hostPathVolume.Spec.Path
 	file := getSnapshotPath(snapshotID)
 	args := []string{}
 	glog.V(4).Infof("Creating snapshot of Filsystem Mode Volume")
@@ -318,7 +315,7 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	snapshot.VolID = volumeID
 	snapshot.Path = file
 	snapshot.CreationTime = *creationTime
-	snapshot.SizeBytes = hostPathVolume.VolSize
+	snapshot.SizeBytes = hostPathVolume.Spec.Size
 	snapshot.ReadyToUse = true
 
 	hostPathVolumeSnapshots[snapshotID] = snapshot
@@ -477,15 +474,15 @@ func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 		return nil, status.Errorf(codes.NotFound, "Could not get volume %s: %v", volID, err)
 	}
 
-	if exVol.VolSize < capacity {
-		exVol.VolSize = capacity
+	if exVol.Spec.Size < capacity {
+		exVol.Spec.Size = capacity
 		if err := updateHostpathVolume(volID, exVol); err != nil {
 			return nil, status.Errorf(codes.Internal, "Could not update volume %s: %v", volID, err)
 		}
 	}
 
 	return &csi.ControllerExpandVolumeResponse{
-		CapacityBytes:         exVol.VolSize,
+		CapacityBytes:         exVol.Spec.Size,
 		NodeExpansionRequired: true,
 	}, nil
 }

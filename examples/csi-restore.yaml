@@ -3,7 +3,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: hpvc-restore
 spec:
-  storageClassName: csi-hostpath-sc
+  storageClassName: csi-zfs-sc
   dataSource:
     name: new-snapshot-demo
     kind: VolumeSnapshot

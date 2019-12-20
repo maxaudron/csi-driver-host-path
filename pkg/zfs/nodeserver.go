@@ -26,11 +26,11 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/kubernetes/pkg/util/mount"
+	"k8s.io/utils/mount"
 	// "k8s.io/kubernetes/pkg/volume/util/volumepathhandler"
 )
 
-const TopologyKeyNode = "topology.hostpath.csi/node"
+const TopologyKeyNode = "topology.zfs.csi/node"
 
 type nodeServer struct {
 	nodeID            string
@@ -74,7 +74,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if req.GetVolumeCapability().GetBlock() != nil {
 		return nil, status.Error(codes.InvalidArgument, "block devices not implemented")
 	} else if req.GetVolumeCapability().GetMount() != nil {
-		notMnt, err := mount.New("").IsNotMountPoint(targetPath)
+		notMnt, err := mount.IsNotMountPoint(mount.New(""), targetPath)
 		if err != nil {
 			if os.IsNotExist(err) {
 				notMnt = true
@@ -141,7 +141,7 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	glog.V(4).Infof("hostpath: volume %s/%s has been unmounted.", targetPath, volumeID)
+	glog.V(4).Infof("zfs: volume %s/%s has been unmounted.", targetPath, volumeID)
 
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }

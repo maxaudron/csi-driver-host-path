@@ -1,6 +1,6 @@
 #!/bin/bash
 
-## This file is for app/hostpathplugin
+## This file is for app/zfsplugin
 ## It could be used for other apps in this repo, but
 ## those applications may or may not take the same
 ## arguments
@@ -10,7 +10,7 @@
 UDS="/tmp/e2e-csi-sanity.sock"
 CSI_ENDPOINT="unix://${UDS}"
 CSI_MOUNTPOINT="/mnt"
-APP=hostpathplugin
+APP=zfsplugin
 
 SKIP="WithCapacity"
 
@@ -18,7 +18,7 @@ SKIP="WithCapacity"
 ./hack/get-sanity.sh
 
 # Build
-make hostpath
+make zfs
 
 # Cleanup
 rm -f $UDS
@@ -27,7 +27,7 @@ rm -f $UDS
 sudo _output/$APP --endpoint=$CSI_ENDPOINT --nodeid=1 &
 pid=$!
 
-# Need to skip Capacity testing since hostpath does not support it
+# Need to skip Capacity testing since zfs does not support it
 sudo $GOPATH/bin/csi-sanity $@ \
     --ginkgo.skip=${SKIP} \
     --csi.mountdir=$CSI_MOUNTPOINT \

@@ -28,6 +28,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	// "k8s.io/kubernetes/pkg/volume/util/volumepathhandler"
+	zfsvolumev1 "github.com/maxaudron/zfs-csi-driver/pkg/apis/zfsvolume/v1"
+	zfsvolumev1client "github.com/maxaudron/zfs-csi-driver/pkg/client"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilexec "k8s.io/utils/exec"
 
 	timestamp "github.com/golang/protobuf/ptypes/timestamp"
@@ -79,7 +82,8 @@ type hostPathSnapshot struct {
 var (
 	vendorVersion = "dev"
 
-	hostPathVolumes         map[string]hostPathVolume
+	zfsVolumeClient *zfsvolumev1client.Client
+
 	hostPathVolumeSnapshots map[string]hostPathSnapshot
 )
 
@@ -112,7 +116,6 @@ const (
 )
 
 func init() {
-	hostPathVolumes = map[string]hostPathVolume{}
 	hostPathVolumeSnapshots = map[string]hostPathSnapshot{}
 }
 
@@ -135,6 +138,15 @@ func NewHostPathDriver(driverName, nodeID, endpoint string, ephemeral bool, maxV
 	glog.Infof("Driver: %v ", driverName)
 	glog.Infof("Version: %s", vendorVersion)
 
+	kubeConfigPath := os.Getenv("KUBECONFIG")
+
+	// Create a CRD client interface for Jinghzhu v1.
+	var err error
+	zfsVolumeClient, err = zfsvolumev1client.NewClient(kubeConfigPath)
+	if err != nil {
+		panic(err)
+	}
+
 	return &hostPath{
 		name:              driverName,
 		version:           vendorVersion,
@@ -156,20 +168,26 @@ func (hp *hostPath) Run() {
 	s.Wait()
 }
 
-func getVolumeByID(volumeID string) (hostPathVolume, error) {
-	if hostPathVol, ok := hostPathVolumes[volumeID]; ok {
-		return hostPathVol, nil
+func getVolumeByID(volumeID string) (*zfsvolumev1.ZFSVolume, error) {
+	vols, err := zfsVolumeClient.List(metav1.ListOptions{})
+	if err != nil {
+		return &zfsvolumev1.ZFSVolume{}, fmt.Errorf("Error while retriving volumes: %s: %s", volumeID, err)
 	}
-	return hostPathVolume{}, fmt.Errorf("volume id %s does not exit in the volumes list", volumeID)
-}
 
-func getVolumeByName(volName string) (hostPathVolume, error) {
-	for _, hostPathVol := range hostPathVolumes {
-		if hostPathVol.VolName == volName {
-			return hostPathVol, nil
+	for _, vol := range vols.Items {
+		if vol.Spec.ID == volumeID {
+			return &vol, nil
 		}
 	}
-	return hostPathVolume{}, fmt.Errorf("volume name %s does not exit in the volumes list", volName)
+	return &zfsvolumev1.ZFSVolume{}, fmt.Errorf("Could not find volume: %s", volumeID)
+}
+
+func getVolumeByName(volumeName string) (*zfsvolumev1.ZFSVolume, error) {
+	if hostPathVol, err := zfsVolumeClient.Get(volumeName, metav1.GetOptions{}); err == nil {
+		return hostPathVol, nil
+	} else {
+		return &zfsvolumev1.ZFSVolume{}, fmt.Errorf("Error while retriving volume: %s: %s", volumeName, err)
+	}
 }
 
 func getSnapshotByName(name string) (hostPathSnapshot, error) {
@@ -181,32 +199,32 @@ func getSnapshotByName(name string) (hostPathSnapshot, error) {
 	return hostPathSnapshot{}, fmt.Errorf("snapshot name %s does not exit in the snapshots list", name)
 }
 
-// getVolumePath returs the canonical path for hostpath volume
+// getVolumePath returs the canonical path for zfs volume
 func getVolumePath(volID string) string {
 	vol, err := getVolumeByID(volID)
 	if err != nil {
 		panic(err)
 	}
-	return vol.VolPath
+	return vol.Spec.Path
 }
 
 // builldDatasetCreateArgs returns zfs create command for dataset along with attributes as a string array
-func buildDatasetCreateArgs(vol *hostPathVolume) []string {
+func buildDatasetCreateArgs(vol *zfsvolumev1.ZFSVolume) []string {
 	var ZFSVolArg []string
 
-	volume := vol.ZFSPool + "/" + vol.VolName
+	volume := vol.Spec.Pool + "/" + vol.ObjectMeta.Name
 
 	ZFSVolArg = append(ZFSVolArg, ZFSCreateArg)
 
-	quotaProperty := "quota=" + strconv.FormatInt(vol.VolSize, 10)
+	quotaProperty := "quota=" + strconv.FormatInt(vol.Spec.Size, 10)
 	ZFSVolArg = append(ZFSVolArg, "-o", quotaProperty)
 
-	if len(vol.ZFSDedup) != 0 {
-		dedupProperty := "dedup=" + vol.ZFSDedup
+	if len(vol.Spec.Dedup) != 0 {
+		dedupProperty := "dedup=" + vol.Spec.Dedup
 		ZFSVolArg = append(ZFSVolArg, "-o", dedupProperty)
 	}
-	if len(vol.ZFSCompression) != 0 {
-		compressionProperty := "compression=" + vol.ZFSCompression
+	if len(vol.Spec.Compression) != 0 {
+		compressionProperty := "compression=" + vol.Spec.Compression
 		ZFSVolArg = append(ZFSVolArg, "-o", compressionProperty)
 	}
 
@@ -215,57 +233,62 @@ func buildDatasetCreateArgs(vol *hostPathVolume) []string {
 	return ZFSVolArg
 }
 
-// createVolume create the directory for the hostpath volume.
+// createVolume create the directory for the zfs volume.
 // It returns the volume path or err if one occurs.
-func createHostpathVolume(volID, name string, cap int64, compression string, dedup string, pool string, ephemeral bool) (*hostPathVolume, error) {
-	hostpathVol := hostPathVolume{
-		VolID:          volID,
-		VolName:        name,
-		VolSize:        cap,
-		VolPath:        filepath.Join("/", filepath.Join(pool, name)),
-		ZFSPool:        pool,
-		ZFSCompression: compression,
-		ZFSDedup:       dedup,
-		Ephemeral:      ephemeral,
+func createHostpathVolume(volID, name string, cap int64, compression string, dedup string, pool string, ephemeral bool) (*zfsvolumev1.ZFSVolume, error) {
+	zfsVolSpec := zfsvolumev1.ZFSVolumeSpec{
+		ID:          volID,
+		Size:        cap,
+		Path:        filepath.Join("/", filepath.Join(pool, name)),
+		Pool:        pool,
+		Compression: compression,
+		Dedup:       dedup,
+	}
+	zfsVolMeta := metav1.ObjectMeta{
+		Name: name,
+	}
+	zfsVol := zfsvolumev1.ZFSVolume{
+		ObjectMeta: zfsVolMeta,
+		Spec:       zfsVolSpec,
 	}
 
-	cmd := exec.Command(ZFSVolCmd, buildDatasetCreateArgs(&hostpathVol)...)
+	cmd := exec.Command(ZFSVolCmd, buildDatasetCreateArgs(&zfsVol)...)
 	out, err := cmd.CombinedOutput()
 
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to allocate volume %v: %v: %s", hostpathVol.VolID, err, out)
+		return nil, status.Errorf(codes.Internal, "failed to allocate volume %v: %v: %s", zfsVolSpec.ID, err, out)
 	}
 
-	hostPathVolumes[volID] = hostpathVol
-	return &hostpathVol, nil
+	zfsVolumeClient.Create(&zfsVol)
+	return &zfsVol, nil
 }
 
-// updateVolume updates the existing hostpath volume.
-func updateHostpathVolume(volID string, volume hostPathVolume) error {
-	glog.V(4).Infof("updating hostpath volume: %s", volID)
+// updateVolume updates the existing zfs volume.
+func updateHostpathVolume(volID string, volume *zfsvolumev1.ZFSVolume) error {
+	glog.V(4).Infof("updating zfs volume: %s", volID)
 
 	if _, err := getVolumeByID(volID); err != nil {
 		return err
 	}
 
-	hostPathVolumes[volID] = volume
+	zfsVolumeClient.Update(volume)
 	return nil
 }
 
 // builldVolumeDestroyArgs returns volume destroy command along with attributes as a string array
-func buildVolumeDestroyArgs(vol *hostPathVolume) []string {
+func buildVolumeDestroyArgs(vol *zfsvolumev1.ZFSVolume) []string {
 	var ZFSVolArg []string
 
-	volume := vol.ZFSPool + "/" + vol.VolName
+	volume := vol.Spec.Pool + "/" + vol.ObjectMeta.Name
 
 	ZFSVolArg = append(ZFSVolArg, ZFSDestroyArg, "-R", volume)
 
 	return ZFSVolArg
 }
 
-// deleteVolume deletes the directory for the hostpath volume.
+// deleteVolume deletes the directory for the zfs volume.
 func deleteHostpathVolume(volID string) error {
-	glog.V(4).Infof("deleting hostpath volume: %s", volID)
+	glog.V(4).Infof("deleting zfs volume: %s", volID)
 
 	vol, err := getVolumeByID(volID)
 	if err != nil {
@@ -273,23 +296,23 @@ func deleteHostpathVolume(volID string) error {
 		return nil
 	}
 
-	cmd := exec.Command(ZFSVolCmd, buildVolumeDestroyArgs(&vol)...)
+	cmd := exec.Command(ZFSVolCmd, buildVolumeDestroyArgs(vol)...)
 	out, err := cmd.CombinedOutput()
 
 	if err != nil {
-		return status.Errorf(codes.Internal, "failed to delete volume %v: %v: %s", vol.VolID, err, out)
+		return status.Errorf(codes.Internal, "failed to delete volume %v: %v: %s", vol.Spec.ID, err, out)
 	}
 
-	delete(hostPathVolumes, volID)
+	zfsVolumeClient.Delete(vol.ObjectMeta.Name, &metav1.DeleteOptions{})
 	return nil
 }
 
-// hostPathIsEmpty is a simple check to determine if the specified hostpath directory
+// hostPathIsEmpty is a simple check to determine if the specified zfs directory
 // is empty or not.
 func hostPathIsEmpty(p string) (bool, error) {
 	f, err := os.Open(p)
 	if err != nil {
-		return true, fmt.Errorf("unable to open hostpath volume, error: %v", err)
+		return true, fmt.Errorf("unable to open zfs volume, error: %v", err)
 	}
 	defer f.Close()
 
@@ -322,17 +345,17 @@ func loadFromSnapshot(snapshotId, destPath string) error {
 
 // loadfromVolume populates the given destPath with data from the srcVolumeID
 func loadFromVolume(srcVolumeId, destPath string) error {
-	hostPathVolume, ok := hostPathVolumes[srcVolumeId]
-	if !ok {
+	hostPathVolume, err := zfsVolumeClient.Get(srcVolumeId, metav1.GetOptions{})
+	if err != nil {
 		return status.Error(codes.NotFound, "source volumeId does not exist, are source/destination in the same storage class?")
 	}
-	srcPath := hostPathVolume.VolPath
+	srcPath := hostPathVolume.Spec.Path
 	isEmpty, err := hostPathIsEmpty(srcPath)
 	if err != nil {
-		return status.Errorf(codes.Internal, "failed verification check of source hostpath volume: %s: %v", srcVolumeId, err)
+		return status.Errorf(codes.Internal, "failed verification check of source zfs volume: %s: %v", srcVolumeId, err)
 	}
 
-	// If the source hostpath volume is empty it's a noop and we just move along, otherwise the cp call will fail with a a file stat error DNE
+	// If the source zfs volume is empty it's a noop and we just move along, otherwise the cp call will fail with a a file stat error DNE
 	if !isEmpty {
 		args := []string{"-a", srcPath + "/.", destPath + "/"}
 		executor := utilexec.New()

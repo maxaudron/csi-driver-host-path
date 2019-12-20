@@ -18,10 +18,10 @@
 # This script runs inside a Prow job. It can run unit tests ("make test")
 # and E2E testing. This E2E testing covers different scenarios (see
 # https://github.com/kubernetes/enhancements/pull/807):
-# - running the stable hostpath example against a Kubernetes release
-# - running the canary hostpath example against a Kubernetes release
+# - running the stable zfs example against a Kubernetes release
+# - running the canary zfs example against a Kubernetes release
 # - building the component in the current repo and running the
-#   stable hostpath example with that one component replaced against
+#   stable zfs example with that one component replaced against
 #   a Kubernetes release
 #
 # The intended usage of this script is that individual repos import
@@ -158,19 +158,19 @@ csi_prow_kubernetes_version_suffix="$(echo "${CSI_PROW_KUBERNETES_VERSION}" | tr
 # the caller.
 configvar CSI_PROW_WORK "$(mkdir -p "$GOPATH/pkg" && mktemp -d "$GOPATH/pkg/csiprow.XXXXXXXXXX")" "work directory"
 
-# The hostpath deployment script is searched for in several places.
+# The zfs deployment script is searched for in several places.
 #
 # - The "deploy" directory in the current repository: this is useful
 #   for the situation that a component becomes incompatible with the
 #   shared deployment, because then it can (temporarily!) provide its
 #   own example until the shared one can be updated; it's also how
-#   csi-driver-host-path itself provides the example.
+#   zfs-csi-driver itself provides the example.
 #
 # - CSI_PROW_HOSTPATH_VERSION of the CSI_PROW_HOSTPATH_REPO is checked
 #   out: this allows other repos to reference a version of the example
 #   that is known to be compatible.
 #
-# - The csi-driver-host-path/deploy directory has multiple sub-directories,
+# - The zfs-csi-driver/deploy directory has multiple sub-directories,
 #   each with different deployments (stable set of images for Kubernetes 1.13,
 #   stable set of images for Kubernetes 1.14, canary for latest Kubernetes, etc.).
 #   This is necessary because there may be incompatible changes in the
@@ -184,19 +184,19 @@ configvar CSI_PROW_WORK "$(mkdir -p "$GOPATH/pkg" && mktemp -d "$GOPATH/pkg/csip
 #   that require using a non-default deployment. The default
 #   is a deployment named "kubernetes-x.yy" (if available),
 #   otherwise "kubernetes-latest".
-#   "none" disables the deployment of the hostpath driver.
+#   "none" disables the deployment of the zfs driver.
 #
 # When no deploy script is found (nothing in `deploy` directory,
 # CSI_PROW_HOSTPATH_REPO=none), nothing gets deployed.
-configvar CSI_PROW_HOSTPATH_VERSION "v1.2.0" "hostpath driver"
-configvar CSI_PROW_HOSTPATH_REPO https://github.com/kubernetes-csi/csi-driver-host-path "hostpath repo"
+configvar CSI_PROW_HOSTPATH_VERSION "v1.2.0" "zfs driver"
+configvar CSI_PROW_HOSTPATH_REPO https://github.com/kubernetes-csi/zfs-csi-driver "zfs repo"
 configvar CSI_PROW_DEPLOYMENT "" "deployment"
-configvar CSI_PROW_HOSTPATH_DRIVER_NAME "hostpath.csi.k8s.io" "the hostpath driver name"
+configvar CSI_PROW_HOSTPATH_DRIVER_NAME "zfs.csi.cocaine.farm" "the zfs driver name"
 
 # If CSI_PROW_HOSTPATH_CANARY is set (typically to "canary", but also
 # "1.0-canary"), then all image versions are replaced with that
 # version tag.
-configvar CSI_PROW_HOSTPATH_CANARY "" "hostpath image"
+configvar CSI_PROW_HOSTPATH_CANARY "" "zfs image"
 
 # The E2E testing can come from an arbitrary repo. The expectation is that
 # the repo supports "go test ./test/e2e -args --storage.testdriver" (https://github.com/kubernetes/kubernetes/pull/72836)
@@ -225,9 +225,9 @@ configvar CSI_PROW_E2E_IMPORT_PATH "$(get_versioned_variable CSI_PROW_E2E_IMPORT
 configvar CSI_PROW_SANITY_REPO https://github.com/kubernetes-csi/csi-test "csi-test repo"
 configvar CSI_PROW_SANITY_VERSION 5421d9f3c37be3b95b241b44a094a3db11bee789 "csi-test version" # latest master
 configvar CSI_PROW_SANITY_IMPORT_PATH github.com/kubernetes-csi/csi-test "csi-test package"
-configvar CSI_PROW_SANITY_SERVICE "hostpath-service" "Kubernetes TCP service name that exposes csi.sock"
-configvar CSI_PROW_SANITY_POD "csi-hostpathplugin-0" "Kubernetes pod with CSI driver"
-configvar CSI_PROW_SANITY_CONTAINER "hostpath" "Kubernetes container with CSI driver"
+configvar CSI_PROW_SANITY_SERVICE "zfs-service" "Kubernetes TCP service name that exposes csi.sock"
+configvar CSI_PROW_SANITY_POD "csi-zfsplugin-0" "Kubernetes pod with CSI driver"
+configvar CSI_PROW_SANITY_CONTAINER "zfs" "Kubernetes container with CSI driver"
 
 # The version of dep to use for 'make test-vendor'. Ignored if the project doesn't
 # use dep. Only binary releases of dep are supported (https://github.com/golang/dep/releases).
@@ -607,7 +607,7 @@ find_deployment () {
 
     # Fixed deployment name? Use it if it exists, otherwise fail.
     if [ "${CSI_PROW_DEPLOYMENT}" ]; then
-        file="$dir/${CSI_PROW_DEPLOYMENT}/deploy-hostpath.sh"
+        file="$dir/${CSI_PROW_DEPLOYMENT}/deploy-zfs.sh"
         if ! [ -e "$file" ]; then
             return 1
         fi
@@ -617,9 +617,9 @@ find_deployment () {
 
     # Ignore: See if you can use ${variable//search/replace} instead.
     # shellcheck disable=SC2001
-    file="$dir/kubernetes-$(echo "${CSI_PROW_KUBERNETES_VERSION}" | sed -e 's/\([0-9]*\)\.\([0-9]*\).*/\1.\2/')/deploy-hostpath.sh"
+    file="$dir/kubernetes-$(echo "${CSI_PROW_KUBERNETES_VERSION}" | sed -e 's/\([0-9]*\)\.\([0-9]*\).*/\1.\2/')/deploy-zfs.sh"
     if ! [ -e "$file" ]; then
-        file="$dir/kubernetes-latest/deploy-hostpath.sh"
+        file="$dir/kubernetes-latest/deploy-zfs.sh"
         if ! [ -e "$file" ]; then
             return 1
         fi
@@ -627,12 +627,12 @@ find_deployment () {
     echo "$file"
 }
 
-# This installs the hostpath driver example. CSI_PROW_HOSTPATH_CANARY overrides all
-# image versions with that canary version. The parameters of install_hostpath can be
+# This installs the zfs driver example. CSI_PROW_HOSTPATH_CANARY overrides all
+# image versions with that canary version. The parameters of install_zfs can be
 # used to override registry and/or tag of individual images (CSI_PROVISIONER_REGISTRY=localhost:9000
 # CSI_PROVISIONER_TAG=latest).
-install_hostpath () {
-    local images deploy_hostpath
+install_zfs () {
+    local images deploy_zfs
     images="$*"
 
     if [ "${CSI_PROW_DEPLOYMENT}" = "none" ]; then
@@ -648,16 +648,16 @@ install_hostpath () {
         done
     fi
 
-    if deploy_hostpath="$(find_deployment "$(pwd)/deploy")"; then
+    if deploy_zfs="$(find_deployment "$(pwd)/deploy")"; then
         :
     elif [ "${CSI_PROW_HOSTPATH_REPO}" = "none" ]; then
         return 1
     else
-        git_checkout "${CSI_PROW_HOSTPATH_REPO}" "${CSI_PROW_WORK}/hostpath" "${CSI_PROW_HOSTPATH_VERSION}" --depth=1 || die "checking out hostpath repo failed"
-        if deploy_hostpath="$(find_deployment "${CSI_PROW_WORK}/hostpath/deploy")"; then
+        git_checkout "${CSI_PROW_HOSTPATH_REPO}" "${CSI_PROW_WORK}/zfs" "${CSI_PROW_HOSTPATH_VERSION}" --depth=1 || die "checking out zfs repo failed"
+        if deploy_zfs="$(find_deployment "${CSI_PROW_WORK}/zfs/deploy")"; then
             :
         else
-            die "deploy-hostpath.sh not found in ${CSI_PROW_HOSTPATH_REPO} ${CSI_PROW_HOSTPATH_VERSION}. To disable E2E testing, set CSI_PROW_HOSTPATH_REPO=none"
+            die "deploy-zfs.sh not found in ${CSI_PROW_HOSTPATH_REPO} ${CSI_PROW_HOSTPATH_VERSION}. To disable E2E testing, set CSI_PROW_HOSTPATH_REPO=none"
         fi
     fi
 
@@ -667,12 +667,12 @@ install_hostpath () {
     # Ignore: Double quote to prevent globbing and word splitting.
     # It's intentional here for $images.
     # shellcheck disable=SC2086
-    if ! run env $images "${deploy_hostpath}"; then
+    if ! run env $images "${deploy_zfs}"; then
         # Collect information about failed deployment before failing.
         collect_cluster_info
         (start_loggers >/dev/null; wait)
         info "For container output see job artifacts."
-        die "deploying the hostpath driver with ${deploy_hostpath} failed"
+        die "deploying the zfs driver with ${deploy_zfs} failed"
     fi
 }
 
@@ -746,7 +746,7 @@ $(
 # Here we iterate over all images that are in use and print some information about them.
 # The "revision" label is where our build process puts the version number and revision,
 # which is always unique, in contrast to the tag (think "canary"...).
-docker exec csi-prow-control-plane docker image ls --format='{{.Repository}} {{.Tag}} {{.ID}}' | grep -e csi -e hostpath | while read -r repo tag id; do
+docker exec csi-prow-control-plane docker image ls --format='{{.Repository}} {{.Tag}} {{.ID}}' | grep -e csi -e zfs | while read -r repo tag id; do
     echo "$repo" "$tag" "$(docker exec csi-prow-control-plane docker image inspect --format='{{ index .Config.Labels "revision"}}' "$id")"
 done
 )
@@ -799,10 +799,10 @@ install_sanity () (
 )
 
 # The default implementation of this function generates a external
-# driver test configuration for the hostpath driver.
+# driver test configuration for the zfs driver.
 #
 # The content depends on both what the E2E suite expects and what the
-# installed hostpath driver supports. Generating it here seems prone
+# installed zfs driver supports. Generating it here seems prone
 # to breakage, but it is uncertain where a better place might be.
 generate_test_driver () {
     cat <<EOF
@@ -1055,7 +1055,7 @@ main () {
             cmds="$(grep '^\s*CMDS\s*=' Makefile | sed -e 's/\s*CMDS\s*=//')"
             # Get the image that was just built (if any) from the
             # top-level Makefile CMDS variable and set the
-            # deploy-hostpath.sh env variables for it. We also need to
+            # deploy-zfs.sh env variables for it. We also need to
             # side-load those images into the cluster.
             for i in $cmds; do
                 e=$(echo "$i" | tr '[:lower:]' '[:upper:]' | tr - _)
@@ -1093,7 +1093,7 @@ main () {
             fi
 
             # Installing the driver might be disabled.
-            if install_hostpath "$images"; then
+            if install_zfs "$images"; then
                 collect_cluster_info
 
                 if sanity_enabled; then
@@ -1140,7 +1140,7 @@ main () {
             fi
 
             # Installing the driver might be disabled.
-            if install_hostpath "$images"; then
+            if install_zfs "$images"; then
                 collect_cluster_info
 
                 if tests_enabled "parallel-alpha"; then

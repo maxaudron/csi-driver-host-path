@@ -8,15 +8,15 @@ This repository hosts the CSI Hostpath driver and all of its build and dependent
 - Access to terminal with `kubectl` installed
 
 ## Deployment
-The easiest way to test the Hostpath driver is to run the `deploy-hostpath.sh` script for the Kubernetes version used by
+The easiest way to test the Hostpath driver is to run the `deploy-zfs.sh` script for the Kubernetes version used by
 the cluster as shown below for Kubernetes 1.13. This creates the deployment that is maintained specifically for that
 release of Kubernetes. However, other deployments may also work. For details see the individual READMEs.
 
 ```shell
-$ deploy/kubernetes-1.13/deploy-hostpath.sh
+$ deploy/kubernetes-1.13/deploy-zfs.sh
 ```
 
-You should see an output similar to the following printed on the terminal showing the application of rbac rules and the result of deploying the hostpath driver, external provisioner, external attacher and snapshotter components:
+You should see an output similar to the following printed on the terminal showing the application of rbac rules and the result of deploying the zfs driver, external provisioner, external attacher and snapshotter components:
 
 ```shell
 applying RBAC rules
@@ -36,47 +36,47 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snaps
 serviceaccount/csi-snapshotter created
 clusterrole.rbac.authorization.k8s.io/external-snapshotter-runner created
 clusterrolebinding.rbac.authorization.k8s.io/csi-snapshotter-role created
-deploying hostpath components
-   deploy/kubernetes-1.13/hostpath/csi-hostpath-attacher.yaml
+deploying zfs components
+   deploy/kubernetes-1.13/zfs/csi-zfs-attacher.yaml
         using           image: quay.io/k8scsi/csi-attacher:v1.0.1
-service/csi-hostpath-attacher created
-statefulset.apps/csi-hostpath-attacher created
-   deploy/kubernetes-1.13/hostpath/csi-hostpath-plugin.yaml
+service/csi-zfs-attacher created
+statefulset.apps/csi-zfs-attacher created
+   deploy/kubernetes-1.13/zfs/csi-zfs-plugin.yaml
         using           image: quay.io/k8scsi/csi-node-driver-registrar:v1.0.2
-        using           image: quay.io/k8scsi/hostpathplugin:v1.0.1
+        using           image: quay.io/k8scsi/zfsplugin:v1.0.1
         using           image: quay.io/k8scsi/livenessprobe:v1.0.2
-service/csi-hostpathplugin created
-statefulset.apps/csi-hostpathplugin created
-   deploy/kubernetes-1.13/hostpath/csi-hostpath-provisioner.yaml
+service/csi-zfsplugin created
+statefulset.apps/csi-zfsplugin created
+   deploy/kubernetes-1.13/zfs/csi-zfs-provisioner.yaml
         using           image: quay.io/k8scsi/csi-provisioner:v1.0.1
-service/csi-hostpath-provisioner created
-statefulset.apps/csi-hostpath-provisioner created
-   deploy/kubernetes-1.13/hostpath/csi-hostpath-snapshotter.yaml
+service/csi-zfs-provisioner created
+statefulset.apps/csi-zfs-provisioner created
+   deploy/kubernetes-1.13/zfs/csi-zfs-snapshotter.yaml
         using           image: quay.io/k8scsi/csi-snapshotter:v1.0.1
-service/csi-hostpath-snapshotter created
-statefulset.apps/csi-hostpath-snapshotter created
-   deploy/kubernetes-1.13/hostpath/csi-hostpath-testing.yaml
+service/csi-zfs-snapshotter created
+statefulset.apps/csi-zfs-snapshotter created
+   deploy/kubernetes-1.13/zfs/csi-zfs-testing.yaml
         using           image: alpine/socat:1.0.3
-service/hostpath-service created
-statefulset.apps/csi-hostpath-socat created
-23:16:10 waiting for hostpath deployment to complete, attempt #0
+service/zfs-service created
+statefulset.apps/csi-zfs-socat created
+23:16:10 waiting for zfs deployment to complete, attempt #0
 deploying snapshotclass
-volumesnapshotclass.snapshot.storage.k8s.io/csi-hostpath-snapclass created
+volumesnapshotclass.snapshot.storage.k8s.io/csi-zfs-snapclass created
 ```
 
 The [livenessprobe side-container](https://github.com/kubernetes-csi/livenessprobe) provided by the CSI community is deployed with the CSI driver to provide the liveness checking of the CSI services.
 
 ## Run example application and validate
 
-Next, validate the deployment.  First, ensure all expected pods are running properly including the external attacher, provisioner, snapshotter and the actual hostpath driver plugin:
+Next, validate the deployment.  First, ensure all expected pods are running properly including the external attacher, provisioner, snapshotter and the actual zfs driver plugin:
 
 ```shell
 $ kubectl get pods
 NAME                         READY   STATUS    RESTARTS   AGE
-csi-hostpath-attacher-0      1/1     Running   0          5m47s
-csi-hostpath-provisioner-0   1/1     Running   0          5m47s
-csi-hostpath-snapshotter-0   1/1     Running   0          5m47s
-csi-hostpathplugin-0         2/2     Running   0          5m45s
+csi-zfs-attacher-0      1/1     Running   0          5m47s
+csi-zfs-provisioner-0   1/1     Running   0          5m47s
+csi-zfs-snapshotter-0   1/1     Running   0          5m47s
+csi-zfsplugin-0         2/2     Running   0          5m45s
 ```
 
 From the root directory, deploy the application pods including a storage class, a PVC, and a pod which mounts a volume using the Hostpath driver found in directory `./examples`:
@@ -85,7 +85,7 @@ From the root directory, deploy the application pods including a storage class, 
 $ for i in ./examples/csi-storageclass.yaml ./examples/csi-pvc.yaml ./examples/csi-app.yaml; do kubectl apply -f $i; done
 pod/my-csi-app created
 persistentvolumeclaim/csi-pvc created
-storageclass.storage.k8s.io/csi-hostpath-sc created
+storageclass.storage.k8s.io/csi-zfs-sc created
 ```
 
 Let's validate the components are deployed:
@@ -93,11 +93,11 @@ Let's validate the components are deployed:
 ```shell
 $ kubectl get pv
 NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM             STORAGECLASS      REASON   AGE
-pvc-58d5ec38-03e5-11e9-be51-000c29e88ff1   1Gi        RWO            Delete           Bound    default/csi-pvc   csi-hostpath-sc            80s
+pvc-58d5ec38-03e5-11e9-be51-000c29e88ff1   1Gi        RWO            Delete           Bound    default/csi-pvc   csi-zfs-sc            80s
 
 $ kubectl get pvc
 NAME      STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS      AGE
-csi-pvc   Bound    pvc-58d5ec38-03e5-11e9-be51-000c29e88ff1   1Gi        RWO            csi-hostpath-sc   93s
+csi-pvc   Bound    pvc-58d5ec38-03e5-11e9-be51-000c29e88ff1   1Gi        RWO            csi-zfs-sc   93s
 ```
 
 Finally, inspect the application pod `my-csi-app`  which mounts a Hostpath volume:
@@ -155,7 +155,7 @@ Events:          <none>
 ```
 
 ## Confirm Hostpath driver works
-The Hostpath driver is configured to create new volumes under `/tmp` inside the hostpath container that is specified in the plugin DaemonSet found [here](./deploy/hostpath/csi-hostpath-plugin.yaml).  This path persist as long as the DaemonSet pod is up and running. 
+The Hostpath driver is configured to create new volumes under `/tmp` inside the zfs container that is specified in the plugin DaemonSet found [here](./deploy/zfs/csi-zfs-plugin.yaml).  This path persist as long as the DaemonSet pod is up and running. 
 
 A file written in a properly mounted Hostpath volume inside an application should show up inside the Hostpath container.  The following steps confirms that Hostpath is working properly.  First, create a file from the application pod as shown:
 
@@ -167,7 +167,7 @@ $ kubectl exec -it my-csi-app /bin/sh
 
 Next, ssh into the Hostpath container and verify that the file shows up there:
 ```shell
-$ kubectl exec -it $(kubectl get pods --selector app=csi-hostpathplugin -o jsonpath='{.items[*].metadata.name}') -c hostpath /bin/sh
+$ kubectl exec -it $(kubectl get pods --selector app=csi-zfsplugin -o jsonpath='{.items[*].metadata.name}') -c zfs /bin/sh
 
 ```
 Then, use the following command to locate the file. If everything works OK you should get a result similar to the following:
@@ -195,7 +195,7 @@ Metadata:
   Self Link:           /apis/storage.k8s.io/v1/volumeattachments/csi-a7515d53b30a1193fd70b822b18181cff1d16422fd922692bce5ea234cb191e9
   UID:                 5fb4874f-03e5-11e9-be51-000c29e88ff1
 Spec:
-  Attacher:   csi-hostpath
+  Attacher:   csi-zfs
   Node Name:  127.0.0.1
   Source:
     Persistent Volume Name:  pvc-58d5ec38-03e5-11e9-be51-000c29e88ff1
@@ -213,12 +213,12 @@ Since volume snapshot is an alpha feature starting in Kubernetes v1.12, you need
 > $ kubectl get volumesnapshotclass
 > ```
 > NAME                     AGE
-> csi-hostpath-snapclass   11s
+> csi-zfs-snapclass   11s
 > ```
 >
 > $ kubectl describe volumesnapshotclass
 > ```
-> Name:         csi-hostpath-snapclass
+> Name:         csi-zfs-snapclass
 > Namespace:
 > Labels:       <none>
 > Annotations:  <none>
@@ -228,9 +228,9 @@ Since volume snapshot is an alpha feature starting in Kubernetes v1.12, you need
 >   Creation Timestamp:  2018-10-03T14:15:30Z
 >   Generation:          1
 >   Resource Version:    2418
->   Self Link:           /apis/snapshot.storage.k8s.io/v1alpha1/volumesnapshotclasses/csi-hostpath-snapclass
+>   Self Link:           /apis/snapshot.storage.k8s.io/v1alpha1/volumesnapshotclasses/csi-zfs-snapclass
 >   UID:                 c8f5bc47-c716-11e8-8911-000c2967769a
-> Snapshotter:           hostpath.csi.k8s.io
+> Snapshotter:           zfs.csi.cocaine.farm
 > Events:                <none>
 > ```
 
@@ -270,7 +270,7 @@ use the volume snapshot class to dynamically create a volume snapshot:
 >   Self Link:           /apis/snapshot.storage.k8s.io/v1alpha1/namespaces/default/volumesnapshots/new-snapshot-demo
 >   UID:                 f55db632-c716-11e8-8911-000c2967769a
 > Spec:
->   Snapshot Class Name:    csi-hostpath-snapclass
+>   Snapshot Class Name:    csi-zfs-snapclass
 >   Snapshot Content Name:  snapcontent-f55db632-c716-11e8-8911-000c2967769a
 >   Source:
 >     API Group:  <nil>
@@ -300,7 +300,7 @@ use the volume snapshot class to dynamically create a volume snapshot:
 > Spec:
 >   Csi Volume Snapshot Source:
 >     Creation Time:    1538576205471577525
->     Driver:           hostpath.csi.k8s.io
+>     Driver:           zfs.csi.cocaine.farm
 >     Restore Size:     1073741824
 >     Snapshot Handle:  f55ff979-c716-11e8-bb16-000c2967769a
 >   Deletion Policy:    Delete
@@ -310,7 +310,7 @@ use the volume snapshot class to dynamically create a volume snapshot:
 >     Name:               pvc-0571cc14-c714-11e8-8911-000c2967769a
 >     Resource Version:   1573
 >     UID:                0575b966-c714-11e8-8911-000c2967769a
->   Snapshot Class Name:  csi-hostpath-snapclass
+>   Snapshot Class Name:  csi-zfs-snapclass
 >   Volume Snapshot Ref:
 >     API Version:       snapshot.storage.k8s.io/v1alpha1
 >     Kind:              VolumeSnapshot
@@ -331,35 +331,35 @@ Follow the following example to create a volume from a volume snapshot:
 > $ kubectl get pvc
 > ```
 > NAME           STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS      AGE
-> csi-pvc        Bound    pvc-0571cc14-c714-11e8-8911-000c2967769a   1Gi        RWO            csi-hostpath-sc   24m
-> hpvc-restore   Bound    pvc-77324684-c717-11e8-8911-000c2967769a   1Gi        RWO            csi-hostpath-sc   6s
+> csi-pvc        Bound    pvc-0571cc14-c714-11e8-8911-000c2967769a   1Gi        RWO            csi-zfs-sc   24m
+> hpvc-restore   Bound    pvc-77324684-c717-11e8-8911-000c2967769a   1Gi        RWO            csi-zfs-sc   6s
 > ```
 >
 > $ kubectl get pv
 > ```
 > NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                  STORAGECLASS      REASON   AGE
-> pvc-0571cc14-c714-11e8-8911-000c2967769a   1Gi        RWO            Delete           Bound    default/csi-pvc        csi-hostpath-sc            25m
-> pvc-77324684-c717-11e8-8911-000c2967769a   1Gi        RWO            Delete           Bound    default/hpvc-restore   csi-hostpath-sc            33s
+> pvc-0571cc14-c714-11e8-8911-000c2967769a   1Gi        RWO            Delete           Bound    default/csi-pvc        csi-zfs-sc            25m
+> pvc-77324684-c717-11e8-8911-000c2967769a   1Gi        RWO            Delete           Bound    default/hpvc-restore   csi-zfs-sc            33s
 > ```
 
 ## Inline ephemeral support
 The CSI Hostpath driver (starting with version 1.2.0) now includes support for inline ephemeral volumes. This means that a volume can be specified directly inside a pod spec without the need to use a persistent volume object.
 Find out how to enable or create a CSI driver with support for such volumes [here](https://kubernetes-csi.github.io/docs/ephemeral-local-volumes.html)
 
-To test this feature on Kubernetes 1.15 (and only with that release), redeploy the CSI Hostpath plugin YAML by updating the `hostpath` container to use  the inline ephemeral mode by setting the `ephemeral` flag, of the driver binary, to true as shown in the following setup:
+To test this feature on Kubernetes 1.15 (and only with that release), redeploy the CSI Hostpath plugin YAML by updating the `zfs` container to use  the inline ephemeral mode by setting the `ephemeral` flag, of the driver binary, to true as shown in the following setup:
 
 ```yaml
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
-  name: csi-hostpathplugin
+  name: csi-zfsplugin
 spec:
 ...
   template:
     spec:
       containers:
-        - name: hostpath
-          image: image: quay.io/k8scsi/hostpathplugin:v1.2.0
+        - name: zfs
+          image: image: quay.io/k8scsi/zfsplugin:v1.2.0
           args:
             - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"
@@ -390,7 +390,7 @@ spec:
   volumes:
     - name: my-csi-volume
       csi:
-        driver: hostpath.csi.k8s.io
+        driver: zfs.csi.cocaine.farm
 ``` 
 
 > See sample YAML file [here](./examples/csi-app-inline.yaml).
@@ -403,7 +403,7 @@ to verify that the volume has been created and deleted (when the pod is removed)
 If you want to build the driver yourself, you can do so with the following command from the root directory:
 
 ```shell
-make hostpath
+make zfs
 ```
 
 
