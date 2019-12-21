@@ -259,8 +259,8 @@ func createHostpathVolume(volID, name string, cap int64, compression string, ded
 		return nil, status.Errorf(codes.Internal, "failed to allocate volume %v: %v: %s", zfsVolSpec.ID, err, out)
 	}
 
-	zfsVolumeClient.Create(&zfsVol)
-	return &zfsVol, nil
+	vol, err := zfsVolumeClient.Create(&zfsVol)
+	return vol, err
 }
 
 // updateVolume updates the existing zfs volume.
@@ -271,8 +271,8 @@ func updateHostpathVolume(volID string, volume *zfsvolumev1.ZFSVolume) error {
 		return err
 	}
 
-	zfsVolumeClient.Update(volume)
-	return nil
+	_, err := zfsVolumeClient.Update(volume)
+	return err
 }
 
 // builldVolumeDestroyArgs returns volume destroy command along with attributes as a string array
@@ -303,8 +303,8 @@ func deleteHostpathVolume(volID string) error {
 		return status.Errorf(codes.Internal, "failed to delete volume %v: %v: %s", vol.Spec.ID, err, out)
 	}
 
-	zfsVolumeClient.Delete(vol.ObjectMeta.Name, &metav1.DeleteOptions{})
-	return nil
+	err = zfsVolumeClient.Delete(vol.ObjectMeta.Name, &metav1.DeleteOptions{})
+	return err
 }
 
 // hostPathIsEmpty is a simple check to determine if the specified zfs directory
