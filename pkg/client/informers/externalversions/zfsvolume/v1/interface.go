@@ -41,5 +41,5 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 
 // ZFSVolumes returns a ZFSVolumeInformer.
 func (v *version) ZFSVolumes() ZFSVolumeInformer {
-	return &zFSVolumeInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+	return &zFSVolumeInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

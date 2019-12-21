@@ -32,7 +32,7 @@ import (
 // ZFSVolumesGetter has a method to return a ZFSVolumeInterface.
 // A group's client should implement this interface.
 type ZFSVolumesGetter interface {
-	ZFSVolumes(namespace string) ZFSVolumeInterface
+	ZFSVolumes() ZFSVolumeInterface
 }
 
 // ZFSVolumeInterface has methods to work with ZFSVolume resources.
@@ -51,14 +51,12 @@ type ZFSVolumeInterface interface {
 // zFSVolumes implements ZFSVolumeInterface
 type zFSVolumes struct {
 	client rest.Interface
-	ns     string
 }
 
 // newZFSVolumes returns a ZFSVolumes
-func newZFSVolumes(c *ZfsV1Client, namespace string) *zFSVolumes {
+func newZFSVolumes(c *ZfsV1Client) *zFSVolumes {
 	return &zFSVolumes{
 		client: c.RESTClient(),
-		ns:     namespace,
 	}
 }
 
@@ -66,7 +64,6 @@ func newZFSVolumes(c *ZfsV1Client, namespace string) *zFSVolumes {
 func (c *zFSVolumes) Get(name string, options metav1.GetOptions) (result *v1.ZFSVolume, err error) {
 	result = &v1.ZFSVolume{}
 	err = c.client.Get().
-		Namespace(c.ns).
 		Resource("zfsvolumes").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
@@ -83,7 +80,6 @@ func (c *zFSVolumes) List(opts metav1.ListOptions) (result *v1.ZFSVolumeList, er
 	}
 	result = &v1.ZFSVolumeList{}
 	err = c.client.Get().
-		Namespace(c.ns).
 		Resource("zfsvolumes").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -100,7 +96,6 @@ func (c *zFSVolumes) Watch(opts metav1.ListOptions) (watch.Interface, error) {
 	}
 	opts.Watch = true
 	return c.client.Get().
-		Namespace(c.ns).
 		Resource("zfsvolumes").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -111,7 +106,6 @@ func (c *zFSVolumes) Watch(opts metav1.ListOptions) (watch.Interface, error) {
 func (c *zFSVolumes) Create(zFSVolume *v1.ZFSVolume) (result *v1.ZFSVolume, err error) {
 	result = &v1.ZFSVolume{}
 	err = c.client.Post().
-		Namespace(c.ns).
 		Resource("zfsvolumes").
 		Body(zFSVolume).
 		Do().
@@ -123,7 +117,6 @@ func (c *zFSVolumes) Create(zFSVolume *v1.ZFSVolume) (result *v1.ZFSVolume, err 
 func (c *zFSVolumes) Update(zFSVolume *v1.ZFSVolume) (result *v1.ZFSVolume, err error) {
 	result = &v1.ZFSVolume{}
 	err = c.client.Put().
-		Namespace(c.ns).
 		Resource("zfsvolumes").
 		Name(zFSVolume.Name).
 		Body(zFSVolume).
@@ -135,7 +128,6 @@ func (c *zFSVolumes) Update(zFSVolume *v1.ZFSVolume) (result *v1.ZFSVolume, err 
 // Delete takes name of the zFSVolume and deletes it. Returns an error if one occurs.
 func (c *zFSVolumes) Delete(name string, options *metav1.DeleteOptions) error {
 	return c.client.Delete().
-		Namespace(c.ns).
 		Resource("zfsvolumes").
 		Name(name).
 		Body(options).
@@ -150,7 +142,6 @@ func (c *zFSVolumes) DeleteCollection(options *metav1.DeleteOptions, listOptions
 		timeout = time.Duration(*listOptions.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
-		Namespace(c.ns).
 		Resource("zfsvolumes").
 		VersionedParams(&listOptions, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -163,7 +154,6 @@ func (c *zFSVolumes) DeleteCollection(options *metav1.DeleteOptions, listOptions
 func (c *zFSVolumes) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1.ZFSVolume, err error) {
 	result = &v1.ZFSVolume{}
 	err = c.client.Patch(pt).
-		Namespace(c.ns).
 		Resource("zfsvolumes").
 		SubResource(subresources...).
 		Name(name).

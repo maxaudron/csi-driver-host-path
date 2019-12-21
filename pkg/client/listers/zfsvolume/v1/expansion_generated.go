@@ -21,7 +21,3 @@ package v1
 // ZFSVolumeListerExpansion allows custom methods to be added to
 // ZFSVolumeLister.
 type ZFSVolumeListerExpansion interface{}
-
-// ZFSVolumeNamespaceListerExpansion allows custom methods to be added to
-// ZFSVolumeNamespaceLister.
-type ZFSVolumeNamespaceListerExpansion interface{}

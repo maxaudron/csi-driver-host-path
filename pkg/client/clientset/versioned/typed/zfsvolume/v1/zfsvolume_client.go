@@ -34,8 +34,8 @@ type ZfsV1Client struct {
 	restClient rest.Interface
 }
 
-func (c *ZfsV1Client) ZFSVolumes(namespace string) ZFSVolumeInterface {
-	return newZFSVolumes(c, namespace)
+func (c *ZfsV1Client) ZFSVolumes() ZFSVolumeInterface {
+	return newZFSVolumes(c)
 }
 
 // NewForConfig creates a new ZfsV1Client for the given config.

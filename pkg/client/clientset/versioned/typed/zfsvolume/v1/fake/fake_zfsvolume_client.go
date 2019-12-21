@@ -28,8 +28,8 @@ type FakeZfsV1 struct {
 	*testing.Fake
 }
 
-func (c *FakeZfsV1) ZFSVolumes(namespace string) v1.ZFSVolumeInterface {
-	return &FakeZFSVolumes{c, namespace}
+func (c *FakeZfsV1) ZFSVolumes() v1.ZFSVolumeInterface {
+	return &FakeZFSVolumes{c}
 }
 
 // RESTClient returns a RESTClient that is used to communicate

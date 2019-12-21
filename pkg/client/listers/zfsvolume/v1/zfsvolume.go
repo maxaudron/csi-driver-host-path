@@ -29,8 +29,8 @@ import (
 type ZFSVolumeLister interface {
 	// List lists all ZFSVolumes in the indexer.
 	List(selector labels.Selector) (ret []*v1.ZFSVolume, err error)
-	// ZFSVolumes returns an object that can list and get ZFSVolumes.
-	ZFSVolumes(namespace string) ZFSVolumeNamespaceLister
+	// Get retrieves the ZFSVolume from the index for a given name.
+	Get(name string) (*v1.ZFSVolume, error)
 	ZFSVolumeListerExpansion
 }
 
@@ -52,38 +52,9 @@ func (s *zFSVolumeLister) List(selector labels.Selector) (ret []*v1.ZFSVolume, e
 	return ret, err
 }
 
-// ZFSVolumes returns an object that can list and get ZFSVolumes.
-func (s *zFSVolumeLister) ZFSVolumes(namespace string) ZFSVolumeNamespaceLister {
-	return zFSVolumeNamespaceLister{indexer: s.indexer, namespace: namespace}
-}
-
-// ZFSVolumeNamespaceLister helps list and get ZFSVolumes.
-type ZFSVolumeNamespaceLister interface {
-	// List lists all ZFSVolumes in the indexer for a given namespace.
-	List(selector labels.Selector) (ret []*v1.ZFSVolume, err error)
-	// Get retrieves the ZFSVolume from the indexer for a given namespace and name.
-	Get(name string) (*v1.ZFSVolume, error)
-	ZFSVolumeNamespaceListerExpansion
-}
-
-// zFSVolumeNamespaceLister implements the ZFSVolumeNamespaceLister
-// interface.
-type zFSVolumeNamespaceLister struct {
-	indexer   cache.Indexer
-	namespace string
-}
-
-// List lists all ZFSVolumes in the indexer for a given namespace.
-func (s zFSVolumeNamespaceLister) List(selector labels.Selector) (ret []*v1.ZFSVolume, err error) {
-	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1.ZFSVolume))
-	})
-	return ret, err
-}
-
-// Get retrieves the ZFSVolume from the indexer for a given namespace and name.
-func (s zFSVolumeNamespaceLister) Get(name string) (*v1.ZFSVolume, error) {
-	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
+// Get retrieves the ZFSVolume from the index for a given name.
+func (s *zFSVolumeLister) Get(name string) (*v1.ZFSVolume, error) {
+	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err
 	}

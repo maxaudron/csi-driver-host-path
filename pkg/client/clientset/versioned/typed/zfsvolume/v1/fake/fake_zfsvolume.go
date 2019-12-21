@@ -31,7 +31,6 @@ import (
 // FakeZFSVolumes implements ZFSVolumeInterface
 type FakeZFSVolumes struct {
 	Fake *FakeZfsV1
-	ns   string
 }
 
 var zfsvolumesResource = schema.GroupVersionResource{Group: "zfs.csi.cocaine.farm", Version: "v1", Resource: "zfsvolumes"}
@@ -41,8 +40,7 @@ var zfsvolumesKind = schema.GroupVersionKind{Group: "zfs.csi.cocaine.farm", Vers
 // Get takes name of the zFSVolume, and returns the corresponding zFSVolume object, and an error if there is any.
 func (c *FakeZFSVolumes) Get(name string, options v1.GetOptions) (result *zfsvolumev1.ZFSVolume, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(zfsvolumesResource, c.ns, name), &zfsvolumev1.ZFSVolume{})
-
+		Invokes(testing.NewRootGetAction(zfsvolumesResource, name), &zfsvolumev1.ZFSVolume{})
 	if obj == nil {
 		return nil, err
 	}
@@ -52,8 +50,7 @@ func (c *FakeZFSVolumes) Get(name string, options v1.GetOptions) (result *zfsvol
 // List takes label and field selectors, and returns the list of ZFSVolumes that match those selectors.
 func (c *FakeZFSVolumes) List(opts v1.ListOptions) (result *zfsvolumev1.ZFSVolumeList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewListAction(zfsvolumesResource, zfsvolumesKind, c.ns, opts), &zfsvolumev1.ZFSVolumeList{})
-
+		Invokes(testing.NewRootListAction(zfsvolumesResource, zfsvolumesKind, opts), &zfsvolumev1.ZFSVolumeList{})
 	if obj == nil {
 		return nil, err
 	}
@@ -74,15 +71,13 @@ func (c *FakeZFSVolumes) List(opts v1.ListOptions) (result *zfsvolumev1.ZFSVolum
 // Watch returns a watch.Interface that watches the requested zFSVolumes.
 func (c *FakeZFSVolumes) Watch(opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewWatchAction(zfsvolumesResource, c.ns, opts))
-
+		InvokesWatch(testing.NewRootWatchAction(zfsvolumesResource, opts))
 }
 
 // Create takes the representation of a zFSVolume and creates it.  Returns the server's representation of the zFSVolume, and an error, if there is any.
 func (c *FakeZFSVolumes) Create(zFSVolume *zfsvolumev1.ZFSVolume) (result *zfsvolumev1.ZFSVolume, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(zfsvolumesResource, c.ns, zFSVolume), &zfsvolumev1.ZFSVolume{})
-
+		Invokes(testing.NewRootCreateAction(zfsvolumesResource, zFSVolume), &zfsvolumev1.ZFSVolume{})
 	if obj == nil {
 		return nil, err
 	}
@@ -92,8 +87,7 @@ func (c *FakeZFSVolumes) Create(zFSVolume *zfsvolumev1.ZFSVolume) (result *zfsvo
 // Update takes the representation of a zFSVolume and updates it. Returns the server's representation of the zFSVolume, and an error, if there is any.
 func (c *FakeZFSVolumes) Update(zFSVolume *zfsvolumev1.ZFSVolume) (result *zfsvolumev1.ZFSVolume, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateAction(zfsvolumesResource, c.ns, zFSVolume), &zfsvolumev1.ZFSVolume{})
-
+		Invokes(testing.NewRootUpdateAction(zfsvolumesResource, zFSVolume), &zfsvolumev1.ZFSVolume{})
 	if obj == nil {
 		return nil, err
 	}
@@ -103,14 +97,13 @@ func (c *FakeZFSVolumes) Update(zFSVolume *zfsvolumev1.ZFSVolume) (result *zfsvo
 // Delete takes name of the zFSVolume and deletes it. Returns an error if one occurs.
 func (c *FakeZFSVolumes) Delete(name string, options *v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(zfsvolumesResource, c.ns, name), &zfsvolumev1.ZFSVolume{})
-
+		Invokes(testing.NewRootDeleteAction(zfsvolumesResource, name), &zfsvolumev1.ZFSVolume{})
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeZFSVolumes) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
-	action := testing.NewDeleteCollectionAction(zfsvolumesResource, c.ns, listOptions)
+	action := testing.NewRootDeleteCollectionAction(zfsvolumesResource, listOptions)
 
 	_, err := c.Fake.Invokes(action, &zfsvolumev1.ZFSVolumeList{})
 	return err
@@ -119,8 +112,7 @@ func (c *FakeZFSVolumes) DeleteCollection(options *v1.DeleteOptions, listOptions
 // Patch applies the patch and returns the patched zFSVolume.
 func (c *FakeZFSVolumes) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *zfsvolumev1.ZFSVolume, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(zfsvolumesResource, c.ns, name, pt, data, subresources...), &zfsvolumev1.ZFSVolume{})
-
+		Invokes(testing.NewRootPatchSubresourceAction(zfsvolumesResource, name, pt, data, subresources...), &zfsvolumev1.ZFSVolume{})
 	if obj == nil {
 		return nil, err
 	}

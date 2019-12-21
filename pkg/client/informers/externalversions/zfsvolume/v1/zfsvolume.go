@@ -41,33 +41,32 @@ type ZFSVolumeInformer interface {
 type zFSVolumeInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
 	tweakListOptions internalinterfaces.TweakListOptionsFunc
-	namespace        string
 }
 
 // NewZFSVolumeInformer constructs a new informer for ZFSVolume type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewZFSVolumeInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewFilteredZFSVolumeInformer(client, namespace, resyncPeriod, indexers, nil)
+func NewZFSVolumeInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+	return NewFilteredZFSVolumeInformer(client, resyncPeriod, indexers, nil)
 }
 
 // NewFilteredZFSVolumeInformer constructs a new informer for ZFSVolume type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewFilteredZFSVolumeInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
+func NewFilteredZFSVolumeInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.ZfsV1().ZFSVolumes(namespace).List(options)
+				return client.ZfsV1().ZFSVolumes().List(options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.ZfsV1().ZFSVolumes(namespace).Watch(options)
+				return client.ZfsV1().ZFSVolumes().Watch(options)
 			},
 		},
 		&zfsvolumev1.ZFSVolume{},
@@ -77,7 +76,7 @@ func NewFilteredZFSVolumeInformer(client versioned.Interface, namespace string, 
 }
 
 func (f *zFSVolumeInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewFilteredZFSVolumeInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
+	return NewFilteredZFSVolumeInformer(client, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 
 func (f *zFSVolumeInformer) Informer() cache.SharedIndexInformer {
