@@ -30,7 +30,7 @@ spec:
                 id:
                   type: "string"
                 size:
-                  type: "string"
+                  type: "integer"
                 path:
                   type: "string"
                 pool:
